@@ -1,0 +1,220 @@
+---
+title: "IBM Attriration-Kaggle"
+author: "sidharth Khatua"
+date: "30 April 2018"
+output:
+  html_document: default
+---
+#Description of the Dataset
+
+Link to the website :- <https://www.kaggle.com/pavansubhasht/ibm-hr-analytics-attrition-dataset>
+
+Uncover the factors that lead to employee attrition and explore important questions such as 'show me a breakdown of distance from home by job role and attrition' or 'compare average monthly income by education and attrition'. This is a fictional data set created by IBM data scientists.
+
+Education 1 'Below College' 2 'College' 3 'Bachelor' 4 'Master' 5 'Doctor'
+
+EnvironmentSatisfaction 1 'Low' 2 'Medium' 3 'High' 4 'Very High'
+
+JobInvolvement 1 'Low' 2 'Medium' 3 'High' 4 'Very High'
+
+JobSatisfaction 1 'Low' 2 'Medium' 3 'High' 4 'Very High'
+
+PerformanceRating 1 'Low' 2 'Good' 3 'Excellent' 4 'Outstanding'
+
+RelationshipSatisfaction 1 'Low' 2 'Medium' 3 'High' 4 'Very High'
+
+WorkLifeBalance 1 'Bad' 2 'Good' 3 'Better' 4 'Best'
+
+
+##Import library 
+```{r,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rattle)
+library(Amelia)
+library(plotly)
+library(gridExtra)
+library(VIM)
+library(ROCR)
+library(randomForest)
+```
+##Import the dataset
+```{r}
+ibm <- read.csv('IBM.csv',stringsAsFactors = TRUE,na.strings = c(' ','',NA))
+dim(ibm)
+table(ibm$Attrition)
+237/(237+1233)
+str(ibm)
+```
+##Check for missing variables 
+we use **missmap()** to visualise the missingness in the data.
+```{r}
+missmap(ibm,y.at = c(1),y.labels = c(''))
+```
+
+Above chart indicates that there is no missingness in the data.
+
+##EDA analysis on the dataset.
+
+
+```{r,fig.width=10}
+a <-ggplot(ibm,aes(ï..Age,fill=Attrition))+
+  geom_density(color='black',alpha=.5)+
+  ggtitle('Histogram of Age vs Attrition')+
+  theme_bw()+
+  xlab('Age')
+b <- ggplot(ibm,aes(MonthlyIncome,fill=Attrition))+
+  geom_density(color='black',alpha=.5)+
+  ggtitle('Histogram of MonthlyIncome vs Attrition')+
+  theme_bw()+
+  xlab('MonthlyIncome')
+c <- ggplot(ibm,aes(HourlyRate,fill=Attrition))+
+  geom_density(color='black',alpha=.5)+
+  ggtitle('Histogram of HourlyRate vs Attrition')+
+  theme_bw()+
+  xlab('HourlyRate')
+d <- ggplot(ibm,aes(DailyRate,fill=Attrition))+
+  geom_density(color='black',alpha=.5)+
+  ggtitle('Histogram of DailyRate vs Attrition')+
+  theme_bw()+
+  xlab('DailyRate') 
+grid.arrange(a,b,c,d)
+
+```
+From the above diagram we can observe that:
+
+1.	Age at **approx 30** have higher attriration rate.
+2.	**lower monthly income salary employee** churn higher compared to others.
+3.	Emloyee with **low Hourly rate and Daily Rate** churn higher compared to others.
+
+```{r,fig.width=10,message= FALSE}
+e <-ggplot(ibm,aes(ibm$JobRole,fill=Attrition))+
+  geom_bar(color='black',alpha=.5)+
+  ggtitle('JobRole vs Attrition')+
+  theme_bw()+
+  xlab('jobrole')+
+  coord_flip()
+
+f <- ggplot(ibm,aes(ibm$EducationField,fill=Attrition))+
+  geom_bar(color='black',alpha=.5)+
+  ggtitle('Education Field vs Attrition')+
+  theme_bw()+
+  xlab('jobrole')+
+  coord_flip()
+
+g <-ggplot(ibm,aes(ibm$NumCompaniesWorked,fill=Attrition))+
+  geom_histogram(color='black',alpha=.5)+
+  ggtitle('No of Companies Worked vs Attrition')+
+  theme_bw()+
+  xlab('No of Companies Worked')+
+  scale_x_continuous(breaks = seq(0,15,1))
+
+h <-ggplot(ibm,aes(ibm$WorkLifeBalance,fill=Attrition))+
+  geom_bar(color='black',alpha=.5)+
+  ggtitle('Worklifebalance vs Attrition')+
+  theme_bw()+
+  xlab('Worklifebalance')+
+  coord_flip()
+
+i <- ggplot(ibm,aes(ibm$Gender,fill=Attrition))+
+  geom_bar(color='black',alpha=.5)+
+  ggtitle('Gender & marital status vs Attrition')+
+  theme_bw()+
+  xlab('Gender')+
+  coord_flip()+facet_wrap(~MaritalStatus)
+i
+grid.arrange(e,f,g,h)
+
+
+```
+
+From the above Diagram we can observe that:
+
+1.	Single Male churn higher compared to others.
+2.	Lab tech, Sales executives, Research scientist churn higher compared to others.
+3.	Employee with life sciences and Medical tend to churn higher.
+4.	Employee with 1 company worked with before tend to churn higher.
+5.	Employee with better work life balance churn high compared to others.
+
+```{r}
+ggplot(ibm,aes(ibm$YearsAtCompany,ibm$YearsSinceLastPromotion,color=ibm$OverTime))+
+  geom_point()+
+  facet_wrap(~ibm$Attrition)
+```
+
+From the above Diagram we can observe that:
+
+1.	The longer you stay in the company the longer is the years since last promotion.
+
+##Data spliting.
+
+we will split the data into two set **train** and **test** set of ratio **70:30**.
+
+we will train the model on **train** set and validate the model on **test** set.
+
+```{r}
+sample <- createDataPartition(ibm$Attrition,times = 1,p = .7,list = FALSE)
+ibm.train <- ibm[sample,]
+ibm.test <- ibm[-sample,]
+```
+##Model Used: [Decision Tree](https://www.analyticsvidhya.com/blog/2016/04/complete-tutorial-tree-based-modeling-scratch-in-python/)
+
+```{r,fig.width=15,fig.height=15}
+set.seed(100)
+model.rpart <- rpart(Attrition~.,data = ibm.train)
+fancyRpartPlot(model.rpart,main = 'Attiration Model',type =2)
+predict.y <- predict(model.rpart,newdata = ibm.test[,-2],type = 'class')
+#Validation 
+confusionMatrix(ibm.test$Attrition,predict.y)
+
+```
+
+1:We have tried **Pruning the model** to simplify the model.
+
+2:Used **plotcp()** to get the graph where we can establish the **CP compelixity parameter.**
+
+```{r}
+##pruning the data:
+plotcp(model.rpart,minline = TRUE)
+model.rpart.prune <- prune(model.rpart,cp = .038)
+
+##Visulalize Prune Descision Tree 
+fancyRpartPlot(model.rpart.prune,main = "Attiration Model")
+predict.prune <- predict(model.rpart.prune,type = 'class',newdata = ibm.test[,-2])
+
+#Validation using confusion matrix.
+confusionMatrix(ibm.test$Attrition,predict.prune)
+```
+
+##Model Used: [Random Forest](https://www.analyticsvidhya.com/blog/2014/06/introduction-random-forest-simplified/)
+
+```{r}
+
+set.seed(101)
+model.rf <- randomForest(Attrition~.,data = ibm.train)
+
+predict.rf <- predict(model.rf,newdata = ibm.test[,-2])
+
+#validate
+confusionMatrix(predict.rf,ibm.test$Attrition)
+
+#Plot the Error Metric 
+plot(model.rf)
+```
+
+##Important variables related to Atrriration rate.
+
+```{r,fig.width=10,fig.height=10}
+varImpPlot(model.rf,main = 'Important Variables in Random Forest.')
+```
+
+
+
+
+
+
+
+
+
+
